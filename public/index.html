@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Smart Reply Copilot</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { 
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: #f5f7fa;
+      padding: 20px;
+    }
+    .container { max-width: 900px; margin: 0 auto; }
+    h1 { color: #1a202c; margin-bottom: 10px; }
+    .subtitle { color: #718096; margin-bottom: 30px; }
+    textarea {
+      width: 100%;
+      height: 120px;
+      padding: 15px;
+      border: 2px solid #e2e8f0;
+      border-radius: 8px;
+      font-size: 14px;
+      resize: vertical;
+      margin-bottom: 15px;
+    }
+    button {
+      background: #4299e1;
+      color: white;
+      padding: 12px 30px;
+      border: none;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover { background: #3182ce; }
+    button:disabled { background: #cbd5e0; cursor: not-allowed; }
+    .results { margin-top: 30px; }
+    .chain-step {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      border-left: 4px solid #4299e1;
+    }
+    .step-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .step-title { font-weight: 600; color: #2d3748; }
+    .confidence {
+      background: #48bb78;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .confidence.medium { background: #ed8936; }
+    .confidence.low { background: #f56565; }
+    .step-content { color: #4a5568; font-size: 14px; line-height: 1.6; }
+    .draft-box {
+      background: #edf2f7;
+      padding: 15px;
+      border-radius: 6px;
+      margin-top: 10px;
+      font-style: italic;
+    }
+    .loading { text-align: center; color: #718096; padding: 40px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Smart Reply Copilot</h1>
+    <p class="subtitle">AI-powered classification → tone calibration → draft response chain</p>
+    
+    <textarea id="ticket" placeholder="Paste a customer support ticket here..."></textarea>
+    <button onclick="process()" id="btn">Process Ticket</button>
+    
+    <div id="results"></div>
+  </div>
+
+  <script>
+    async function process() {
+      const ticketText = document.getElementById('ticket').value;
+      if (!ticketText.trim()) return alert('Please enter a ticket');
+      
+      const btn = document.getElementById('btn');
+      btn.disabled = true;
+      btn.textContent = 'Processing...';
+      
+      document.getElementById('results').innerHTML = '<div class="loading">Running classification → tone calibration → draft generation...</div>';
+      
+      try {
+        const response = await fetch('/api/process', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ ticketText })
+        });
+        
+        const data = await response.json();
+        displayResults(data);
+      } catch (error) {
+        document.getElementById('results').innerHTML = '<div class="chain-step">Error: ' + error.message + '</div>';
+      }
+      
+      btn.disabled = false;
+      btn.textContent = 'Process Ticket';
+    }
+    
+    function displayResults(data) {
+      const getConfidenceClass = (conf) => {
+        if (conf >= 0.8) return 'confidence';
+        if (conf >= 0.6) return 'confidence medium';
+        return 'confidence low';
+      };
+      
+      document.getElementById('results').innerHTML = `
+        <div class="results">
+          <div class="chain-step">
+            <div class="step-header">
+              <span class="step-title">Step 1: Category Detection</span>
+              <span class="${getConfidenceClass(data.classification.confidence)}">${(data.classification.confidence * 100).toFixed(0)}% confident</span>
+            </div>
+            <div class="step-content">
+              <strong>Category:</strong> ${data.classification.category}<br>
+              <strong>Reasoning:</strong> ${data.classification.reasoning}
+            </div>
+          </div>
+          
+          <div class="chain-step">
+            <div class="step-header">
+              <span class="step-title">Step 2: Tone Calibration</span>
+              <span class="${getConfidenceClass(data.tone.confidence)}">${(data.tone.confidence * 100).toFixed(0)}% confident</span>
+            </div>
+            <div class="step-content">
+              <strong>Tone:</strong> ${data.tone.type}<br>
+              <strong>Urgency:</strong> ${data.tone.urgency}
+            </div>
+          </div>
+          
+          <div class="chain-step">
+            <div class="step-header">
+              <span class="step-title">Step 3: Draft Response</span>
+              <span class="${getConfidenceClass(data.response.confidence)}">${(data.response.confidence * 100).toFixed(0)}% confident</span>
+            </div>
+            <div class="draft-box">${data.response.draft}</div>
+          </div>
+          
+          <div class="chain-step" style="border-left-color: #805ad5;">
+            <div class="step-header">
+              <span class="step-title">Overall Confidence Score</span>
+              <span class="${getConfidenceClass(data.overallConfidence)}">${(data.overallConfidence * 100).toFixed(0)}%</span>
+            </div>
+            <div class="step-content">
+              Average confidence across all three chain steps
+            </div>
+          </div>
+        </div>
+      `;
+    }
+  </script>
+</body>
+</html>
